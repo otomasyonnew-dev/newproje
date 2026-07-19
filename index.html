@@ -6407,15 +6407,21 @@ function operasyonRaporuHazirla(){
   
   var ayAd=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   
-  var filtreBas=new Date(yil,ay,1).getTime();
-  var filtreBit=new Date(yil,ay+1,0,23,59,59).getTime();
+  // Ayın başı ve sonu için timestamp hesapla
+  var filtreBas=new Date(yil,ay,1,0,0,0,0).getTime();
+  var filtreBit=new Date(yil,ay+1,0,23,59,59,999).getTime();
   
+  // Filtrelenmiş kayıtlar - SADECE seçilen ay
   var kayitlar=_pmK.filter(function(k){
-    return k.t>=filtreBas&&k.t<=filtreBit&&k.ada;
+    if(!k.t)return false;
+    var kt=typeof k.t==='number'?k.t:new Date(k.t).getTime();
+    return kt>=filtreBas&&kt<=filtreBit&&k.ada;
   });
   
+  // Puantaj kayıtlarını da filtrele
   var puantajKayitlar=_pmP.filter(function(p){
-    var pt=new Date(p.tarih||p.t).getTime();
+    if(!p.tarih&&!p.t)return false;
+    var pt=typeof p.tarih==='string'?new Date(p.tarih).getTime():(typeof p.t==='number'?p.t:new Date(p.t||p.tarih).getTime());
     return pt>=filtreBas&&pt<=filtreBit;
   });
   
@@ -6424,7 +6430,8 @@ function operasyonRaporuHazirla(){
   
   var uniqueGunler={};
   kayitlar.forEach(function(k){
-    var d=new Date(k.t);
+    var kt=typeof k.t==='number'?k.t:new Date(k.t).getTime();
+    var d=new Date(kt);
     var tarihStr=d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();
     uniqueGunler[tarihStr]=true;
   });
@@ -6439,13 +6446,13 @@ function operasyonRaporuHazirla(){
   var gorevMap={};
   kayitlar.forEach(function(k){
     var g=(k.gorev||k.not||'Diğer').trim();
-    gorevMap[g]=(gorevMap[g]||0)+(k.ag||0);
+    if(g)gorevMap[g]=(gorevMap[g]||0)+(k.ag||0);
   });
   
   var personelMap={};
   kayitlar.forEach(function(k){
     var p=k.personel||'';
-    p.split(',').forEach(function(personel){
+    if(p)p.split(',').forEach(function(personel){
       personel=personel.trim();
       if(personel)personelMap[personel]=(personelMap[personel]||0)+(k.ag||0);
     });
@@ -6493,9 +6500,14 @@ function operasyonRaporuHTML(){
     return '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:8px;font-size:12px">'+h.tarih+'</td><td style="padding:8px;font-size:12px">'+h.islem+'</td><td style="padding:8px;font-size:12px">'+h.personel+'</td><td style="padding:8px;font-size:12px;color:#64748b">'+h.not+'</td></tr>';
   }).join('');
   
-  var kayitSorted=r.kayitlar.slice().sort(function(a,b){return a.t-b.t;});
+  var kayitSorted=r.kayitlar.slice().sort(function(a,b){
+    var at=typeof a.t==='number'?a.t:new Date(a.t).getTime();
+    var bt=typeof b.t==='number'?b.t:new Date(b.t).getTime();
+    return at-bt;
+  });
   var gunlukHTML=kayitSorted.map(function(k){
-    var d=new Date(k.t);
+    var kt=typeof k.t==='number'?k.t:new Date(k.t).getTime();
+    var d=new Date(kt);
     var gunKisalt=['Pzt','Sal','Çar','Per','Cum','Cmt','Pz'][d.getDay()];
     var tarihFull=String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+d.getFullYear();
     var gorev=(k.gorev||'').replace(/\n/g,'<br>');
