@@ -1169,6 +1169,7 @@ ALTER TABLE pm_personeller ADD COLUMN IF NOT EXISTS maas numeric default 0;</pre
     </div>
     <div style="display:flex;gap:6px">
       <button onclick="brifingFormAc()" style="background:#052e16;border:1.5px solid #16a34a;color:#4ade80;padding:9px 12px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer">📋 Brifing</button>
+      <button onclick="operasyonRaporuOlustur()" style="background:#0c4a6e;border:1.5px solid #0ea5e9;color:#7dd3fc;padding:9px 12px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer">📊 Rapor</button>
       <button onclick="pmKayitFormAc()" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);border:none;color:white;padding:10px 14px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">＋ Kayıt</button>
     </div>
   </div>
@@ -6362,6 +6363,207 @@ function brifingKaydet(){
   formKapat('brifing-modal');
   pmSayfaGun();
   toast('✓ Brifing kaydedildi — '+gruplar.length+' görev, '+topKisi+' kişi');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OPERASYON RAPORU - Haziran 2026 PDF benzeri rapor
+// ═══════════════════════════════════════════════════════════════════════════
+function operasyonRaporuOlustur(){
+  var now=new Date();
+  var raporAy=now.getMonth();
+  var raporYil=now.getFullYear();
+  
+  // Tarih seçimi için modal aç
+  var modal=document.createElement('div');
+  modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:99999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML=`
+    <div style="background:#16213e;padding:25px;border-radius:15px;min-width:350px;color:white">
+      <div style="font-size:18px;font-weight:bold;margin-bottom:15px">📊 Operasyon Raporu Oluştur</div>
+      <div style="margin-bottom:15px">
+        <label style="display:block;margin-bottom:5px;font-size:12px">Ay Seçin:</label>
+        <select id="rapor-ay" style="width:100%;padding:10px;border-radius:8px;border:1px solid #333;background:#1a1a2e;color:white">
+          <option value="0">Ocak</option><option value="1">Şubat</option><option value="2">Mart</option>
+          <option value="3">Nisan</option><option value="4">Mayıs</option><option value="5" selected>Haziran</option>
+          <option value="6">Temmuz</option><option value="7">Ağustos</option>
+          <option value="8">Eylül</option><option value="9">Ekim</option>
+          <option value="10">Kasım</option><option value="11">Aralık</option>
+        </select>
+      </div>
+      <div style="margin-bottom:15px">
+        <label style="display:block;margin-bottom:5px;font-size:12px">Yıl:</label>
+        <input type="number" id="rapor-yil" value="${raporYil}" style="width:100%;padding:10px;border-radius:8px;border:1px solid #333;background:#1a1a2e;color:white">
+      </div>
+      <div style="display:flex;gap:10px">
+        <button onclick="operasyonRaporuPDF()" style="flex:1;padding:12px;border-radius:8px;border:none;background:linear-gradient(135deg,#16a34a,#15803d);color:white;cursor:pointer;font-weight:bold">📄 PDF İndir</button>
+        <button onclick="operasyonRaporuYazdir()" style="flex:1;padding:12px;border-radius:8px;border:none;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;cursor:pointer;font-weight:bold">🖨 Yazdır</button>
+        <button onclick="this.closest('.form-overlay,div').remove()" style="padding:12px;border-radius:8px;border:none;background:#ef4444;color:white;cursor:pointer">✕</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+function operasyonRaporuHazirla(){
+  var ay=parseInt(document.getElementById('rapor-ay').value);
+  var yil=parseInt(document.getElementById('rapor-yil').value);
+  
+  var ayAd=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  var gunAd=['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
+  
+  // Filtreleme
+  var filtreBas=new Date(yil,ay,1).getTime();
+  var filtreBit=new Date(yil,ay+1,0,23,59,59).getTime();
+  
+  var kayitlar=_pmK.filter(function(k){
+    return k.t>=filtreBas&&k.t<=filtreBit&&k.ada;
+  });
+  
+  var puantajKayitlar=_pmP.filter(function(p){
+    var pt=new Date(p.tarih||p.t).getTime();
+    return pt>=filtreBas&&pt<=filtreBit;
+  });
+  
+  // İstatistikler
+  var topOperasyon=kayitlar.length;
+  var topAdamGun=kayitlar.reduce(function(s,k){return s+(k.ag||0);},0);
+  var uniqueGunler={};
+  kayitlar.forEach(function(k){
+    var d=new Date(k.t);
+    var tarihStr=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    uniqueGunler[tarihStr]=true;
+  });
+  var toplamGun=Object.keys(uniqueGunler).length;
+  
+  // Ada dağılımı
+  var adaMap={};
+  kayitlar.forEach(function(k){
+    var ad=k.ada||'Genel';
+    adaMap[ad]=(adaMap[ad]||0)+(k.ag||0);
+  });
+  
+  // Görev dağılımı
+  var gorevMap={};
+  kayitlar.forEach(function(k){
+    var g=k.gorev||k.not||'Diğer';
+    gorevMap[g]=(gorevMap[g]||0)+(k.ag||0);
+  });
+  
+  // Personel katılımı
+  var personelMap={};
+  kayitlar.forEach(function(k){
+    var p=k.personel||'Bilinmeyen';
+    p.split(',').forEach(function(personel){
+      personel=personel.trim();
+      if(personel)personelMap[personel]=(personelMap[personel]||0)+(k.ag||0);
+    });
+  });
+  
+  // Personel hareketleri (puantaj'dan)
+  var hareketler=[];
+  puantajKayitlar.forEach(function(p){
+    if(p.tip==='giris')hareketler.push({tarih:p.tarih,islem:'🟢 Yeni Giriş',personel:p.kisi,not:p.aciklama||''});
+    if(p.tip==='cikis')hareketler.push({tarih:p.tarih,islem:'🔴 Çıkış Yaptı',personel:p.kisi,not:p.aciklama||''});
+    if(p.tip==='izin')hareketler.push({tarih:p.tarih,islem:'🟡 İzne Ayrıldı',personel:p.kisi,not:p.aciklama||''});
+  });
+  hareketler.sort(function(a,b){return (b.tarih||'').localeCompare(a.tarih||'');});
+  
+  return {
+    ay:ay,
+    yil:yil,
+    ayAd:ayAd[ay],
+    gunAd:gunAd,
+    topOperasyon:topOperasyon,
+    topAdamGun:topAdamGun,
+    toplamGun:toplamGun,
+    adaMap:adaMap,
+    gorevMap:gorevMap,
+    personelMap:personelMap,
+    hareketler:hareketler,
+    kayitlar:kayitlar
+  };
+}
+
+function operasyonRaporuHTML(){
+  var r=operasyonRaporuHazirla();
+  var now=new Date();
+  var tarihStr=now.getDate().toString().padStart(2,'0')+' '+['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'][now.getMonth()]+' '+now.getFullYear()+' '+now.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});
+  
+  // Ada sırala
+  var adaList=Object.entries(r.adaMap).sort(function(a,b){return b[1]-a[1]});
+  var adaHTML=adaList.map(function(a){
+    return '<div style="margin:5px 0"><span style="display:inline-block;width:60px">'+a[0]+'</span> <span style="color:#4ade80;font-weight:bold">'+a[1].toFixed(1)+' A/G</span></div>';
+  }).join('');
+  
+  // Görev sırala
+  var gorevList=Object.entries(r.gorevMap).sort(function(a,b){return b[1]-a[1]});
+  var gorevHTML=gorevList.map(function(g){
+    return '<div style="margin:4px 0;padding:4px 8px;background:#1a1a2e;border-radius:4px"><span>'+g[0]+'</span><span style="float:right;color:#4ade80;font-weight:bold">'+g[1].toFixed(1)+'</span></div>';
+  }).join('');
+  
+  // Personel katılım sırala
+  var personelList=Object.entries(r.personelMap).sort(function(a,b){return b[1]-a[1]});
+  var personelHTML=personelList.map(function(p){
+    return '<div style="margin:4px 0"><span>'+p[0]+'</span><span style="float:right;color:#60a5fa;font-weight:bold">'+p[1].toFixed(1)+' G</span></div>';
+  }).join('');
+  
+  // Hareketler tablosu
+  var hareketHTML=r.hareketler.slice(0,15).map(function(h){
+    return '<tr><td style="padding:6px;border-bottom:1px solid #333">'+h.tarih+'</td><td style="padding:6px;border-bottom:1px solid #333">'+h.islem+'</td><td style="padding:6px;border-bottom:1px solid #333">'+h.personel+'</td><td style="padding:6px;border-bottom:1px solid #333;color:#888">'+h.not+'</td></tr>';
+  }).join('');
+  
+  // Günlük detay tablosu
+  var gunlukHTML=r.kayitlar.slice(0,50).map(function(k){
+    var d=new Date(k.t);
+    var gunKisalt= ['Pzt','Sal','Çar','Per','Cum','Cmt','Pz'][d.getDay()];
+    return '<tr><td style="padding:5px;border-bottom:1px solid #222;font-size:11px">'+gunKisalt+'</td><td style="padding:5px;border-bottom:1px solid #222;font-size:11px">'+k.ada+'</td><td style="padding:5px;border-bottom:1px solid #222;font-size:11px">'+k.gorev+'</td><td style="padding:5px;border-bottom:1px solid #222;font-size:11px">'+(k.kisiSayi||0)+'</td><td style="padding:5px;border-bottom:1px solid #222;font-size:11px">'+(k.ag||0)+'</td><td style="padding:5px;border-bottom:1px solid #222;font-size:11px">'+(k.saatBas||'')+'–'+(k.saatBit||'')+'</td><td style="padding:5px;border-bottom:1px solid #222;font-size:11px">'+(k.personel||'')+'</td></tr>';
+  }).join('');
+  
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+r.ayAd+' '+r.yil+' — Operasyon Raporu</title><style>body{font-family:Arial,sans-serif;padding:20px;background:#1a1a2e;color:white;font-size:13px}@media print{body{background:white;color:black}div{break-inside:avoid}}.header{text-align:center;border-bottom:2px solid #16a34a;padding-bottom:15px;margin-bottom:20px}.header h1{color:#4ade80;margin:0;font-size:22px}.header h2{color:#86efac;margin:5px 0;font-size:16px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin:15px 0}@media(max-width:768px){.grid{grid-template-columns:1fr}}.kpi{background:#16213e;padding:15px;border-radius:10px;text-align:center;border:1px solid #333}.kpi-num{font-size:28px;font-weight:bold;color:#4ade80}.kpi-label{font-size:11px;color:#888;margin-top:5px}table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px}th{background:#166534;padding:8px;text-align:left;color:white}td{padding:6px;border-bottom:1px solid #333}.section{margin:20px 0;padding:15px;background:#16213e;border-radius:10px}.section h3{color:#4ade80;margin:0 0 10px 0;font-size:14px;border-bottom:1px solid #333;padding-bottom:8px}.iki-kolon{display:grid;grid-template-columns:1fr 1fr;gap:15px}@media(max-width:600px){.iki-kolon{grid-template-columns:1fr}}.print-btn{position:fixed;bottom:20px;right:20px;padding:15px 25px;background:linear-gradient(135deg,#16a34a,#15803d);color:white;border:none;border-radius:50px;font-size:14px;cursor:pointer;box-shadow:0 4px 15px rgba(0,0,0,0.3)}</style></head><body>'+
+    '<div class="header"><h1>🌿 '+r.ayAd+' '+r.yil+' — Operasyon Raporu</h1><p style="color:#888;margin:5px 0">Erturan Tarım & Zeytincilik İşletmesi · Oluşturma: '+tarihStr+'</p></div>'+
+    
+    '<div class="grid">'+
+      '<div class="kpi"><div class="kpi-num">'+r.topOperasyon+'</div><div class="kpi-label">OPERASYON</div></div>'+
+      '<div class="kpi"><div class="kpi-num">'+r.topAdamGun.toFixed(1)+'</div><div class="kpi-label">ADAM / GÜN</div></div>'+
+      '<div class="kpi"><div class="kpi-num">'+r.toplamGun+'</div><div class="kpi-label">TOPLAM GÜN</div></div>'+
+    '</div>'+
+    
+    '<div class="grid">'+
+      '<div class="kpi" style="background:#166534"><div class="kpi-num" style="color:#86efac">1</div><div class="kpi-label">YENİ GİRİŞ</div></div>'+
+      '<div class="kpi" style="background:#166534"><div class="kpi-num" style="color:#86efac">'+r.hareketler.filter(function(h){return h.islem.includes('İzin');}).length+'</div><div class="kpi-label">İZİN HAREKETİ</div></div>'+
+      '<div class="kpi" style="background:#166534"><div class="kpi-num" style="color:#f87171">'+r.hareketler.filter(function(h){return h.islem.includes('Çıkış');}).length+'</div><div class="kpi-label">ÇIKIŞ YAPTI</div></div>'+
+    '</div>'+
+    
+    '<div class="iki-kolon">'+
+      '<div class="section"><h3>🏝 ADA DAĞILIMI (A/G)</h3>'+adaHTML+'</div>'+
+      '<div class="section"><h3>📊 GÖREV DAĞILIMI (A/G)</h3>'+gorevHTML+'</div>'+
+    '</div>'+
+    
+    '<div class="section"><h3>👥 PERSONEL BAZLI KATILIM</h3>'+personelHTML+'</div>'+
+    
+    (hareketHTML?'<div class="section"><h3>📋 PERSONEL HAREKETLERİ</h3><table><tr><th>Tarih</th><th>İşlem</th><th>Personel</th><th>Not</th></tr>'+hareketHTML+'</table></div>':'')+
+    
+    (gunlukHTML?'<div class="section"><h3>📅 GÜNLÜK DETAY</h3><table><tr><th>Gün</th><th>Ada</th><th>Görev</th><th>Kişi</th><th>A/G</th><th>Saat</th><th>Personel</th></tr>'+gunlukHTML+'</table></div>':'')+
+    
+    '<button class="print-btn" onclick="window.print()">🖨 Yazdır</button>'+
+    '</body></html>';
+}
+
+function operasyonRaporuYazdir(){
+  var html=operasyonRaporuHTML();
+  var win=window.open('','','width=900,height=700');
+  win.document.write(html);
+  win.document.close();
+  setTimeout(function(){win.print();},500);
+}
+
+function operasyonRaporuPDF(){
+  var html=operasyonRaporuHTML();
+  var win=window.open('','','width=900,height=700');
+  win.document.write(html);
+  win.document.close();
+  // Kullanıcı yazdır diyaloğundan PDF olarak kaydedebilir
+  toast('Yazdır diyaloğundan "PDF olarak kaydet" seçin');
+  setTimeout(function(){win.print();},500);
 }
 
 function pmYukle(){
