@@ -6393,12 +6393,17 @@ function operasyonRaporuOlustur(){
         <input type="number" id="rapor-yil" value="${raporYil}" style="width:100%;padding:12px;border-radius:8px;border:1px solid #cbd5e1;font-size:14px">
       </div>
       <div style="display:flex;gap:10px">
-        <button onclick="operasyonRaporuYazdir()" style="flex:1;padding:14px;border-radius:8px;border:none;background:#166534;color:white;cursor:pointer;font-weight:600;font-size:14px">🖨 Yazdır / PDF</button>
-        <button onclick="this.closest('div').remove()" style="padding:14px 18px;border-radius:8px;border:none;background:#ef4444;color:white;cursor:pointer;font-size:16px;font-weight:600">✕</button>
+        <button onclick="raporModalKapat();operasyonRaporuYazdir()" style="flex:1;padding:14px;border-radius:8px;border:none;background:#166534;color:white;cursor:pointer;font-weight:600;font-size:14px">🖨 Yazdır / PDF</button>
+        <button onclick="raporModalKapat()" style="padding:14px 18px;border-radius:8px;border:none;background:#ef4444;color:white;cursor:pointer;font-size:16px;font-weight:600">✕</button>
       </div>
     </div>
   `;
   document.body.appendChild(modal);
+}
+
+function raporModalKapat(){
+  var modal=document.querySelector('div[style*="position:fixed"][style*="z-index:99999"]');
+  if(modal)modal.remove();
 }
 
 function operasyonRaporuHazirla(){
